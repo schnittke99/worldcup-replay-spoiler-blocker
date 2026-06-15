@@ -1,14 +1,12 @@
 // ==UserScript==
 // @name         World Cup Replay Spoiler Blocker
 // @namespace    https://local/worldcup-replay-spoiler-blocker
-// @version      0.1.2
+// @version      0.1.3
 // @description  Hide football replay score spoilers on CCTV, Migu Video, and Hupu football pages.
 // @author       Codex
 // @match        *://worldcup.cctv.com/2026/*
 // @match        *://cbs.sports.cctv.com/*
-// @match        *://www.miguvideo.com/p/home/198188f9235149749cb1b132c88e2c7a*
-// @match        *://www.miguvideo.com/p/live/*
-// @match        *://www.miguvideo.com/p/detail/*
+// @match        *://www.miguvideo.com/*
 // @match        *://bbs.hupu.com/all-soccer*
 // @run-at       document-start
 // @grant        GM_addStyle
