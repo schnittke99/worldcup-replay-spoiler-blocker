@@ -1,13 +1,14 @@
 // ==UserScript==
 // @name         World Cup Replay Spoiler Blocker
 // @namespace    https://local/worldcup-replay-spoiler-blocker
-// @version      0.1.3
+// @version      0.1.4
 // @description  Hide football replay score spoilers on CCTV, Migu Video, and Hupu football pages.
 // @author       Codex
 // @match        *://worldcup.cctv.com/2026/*
 // @match        *://cbs.sports.cctv.com/*
 // @match        *://www.miguvideo.com/*
 // @match        *://bbs.hupu.com/all-soccer*
+// @match        *://*/*
 // @run-at       document-start
 // @grant        GM_addStyle
 // @grant        GM_getValue
@@ -34,6 +35,7 @@
   const STORAGE_KEYS = Object.freeze({
     globalEnabled: "wcSpoilerBlocker.globalEnabled",
     disabledHosts: "wcSpoilerBlocker.disabledHosts",
+    genericUrlRules: "wcSpoilerBlocker.genericUrlRules",
   });
 
   const MASK_CLASS = "wc-spoiler-mask";
@@ -132,14 +134,32 @@
 
   function scanDocument() {
     if (!isEnabled() || !document.body) return;
+    const runGenericFallback = shouldRunGenericFallback();
+    if (!isBuiltInSitePage() && !runGenericFallback) return;
 
     scannedTextNodesThisPass = 0;
     applyCctvRules();
     applyMiguRules();
 
-    if (CONFIG.genericFallback) {
+    if (runGenericFallback) {
       maskGenericSpoilers(document.body);
     }
+  }
+
+  function isBuiltInSitePage() {
+    return isCctvPage() || isMiguVideo() || isHupuFootballPage();
+  }
+
+  function shouldRunGenericFallback() {
+    if (!CONFIG.genericFallback) return false;
+    if (isBuiltInSitePage()) return true;
+    return getMatchingGenericUrlRules(location.href).length > 0;
+  }
+
+  function isCctvPage() {
+    const host = location.hostname;
+    const path = location.pathname;
+    return (host === "worldcup.cctv.com" && path.startsWith("/2026/")) || host === "cbs.sports.cctv.com";
   }
 
   function applyCctvRules() {
@@ -190,6 +210,10 @@
 
   function isMiguVideo() {
     return location.hostname === "www.miguvideo.com" || location.hostname.endsWith(".miguvideo.com");
+  }
+
+  function isHupuFootballPage() {
+    return location.hostname === "bbs.hupu.com" && location.pathname === "/all-soccer";
   }
 
   function maskCctvWorldCupTitles() {
@@ -643,6 +667,54 @@
     return (text || "").replace(/\s+/g, " ").trim();
   }
 
+  function getGenericUrlRules() {
+    const value = getValue(STORAGE_KEYS.genericUrlRules, []);
+    return Array.isArray(value) ? value.filter((rule) => typeof rule === "string" && rule.trim()) : [];
+  }
+
+  function setGenericUrlRules(rules) {
+    const uniqueRules = Array.from(new Set(rules.map(normalizeGenericUrlRule).filter(Boolean)));
+    setValue(STORAGE_KEYS.genericUrlRules, uniqueRules);
+  }
+
+  function normalizeGenericUrlRule(rule) {
+    return String(rule || "").trim();
+  }
+
+  function getCurrentPageGenericRule() {
+    return `${location.origin}${location.pathname}*`;
+  }
+
+  function getCurrentSiteGenericRule() {
+    return `${location.origin}/*`;
+  }
+
+  function addGenericUrlRule(rule) {
+    const next = getGenericUrlRules();
+    next.push(rule);
+    setGenericUrlRules(next);
+    refreshAfterSettingsChange();
+  }
+
+  function removeGenericUrlRules(rulesToRemove) {
+    const removeSet = new Set(rulesToRemove);
+    setGenericUrlRules(getGenericUrlRules().filter((rule) => !removeSet.has(rule)));
+    refreshAfterSettingsChange();
+  }
+
+  function getMatchingGenericUrlRules(url) {
+    return getGenericUrlRules().filter((rule) => genericUrlRuleMatches(rule, url));
+  }
+
+  function genericUrlRuleMatches(rule, url) {
+    const normalizedRule = normalizeGenericUrlRule(rule);
+    if (!normalizedRule) return false;
+    if (normalizedRule === url) return true;
+
+    const escaped = normalizedRule.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*");
+    return new RegExp(`^${escaped}$`).test(url);
+  }
+
   function isEnabled() {
     if (!getValue(STORAGE_KEYS.globalEnabled, true)) return false;
     const disabledHosts = getValue(STORAGE_KEYS.disabledHosts, {});
@@ -680,6 +752,8 @@
     const globalEnabled = getValue(STORAGE_KEYS.globalEnabled, true);
     const disabledHosts = getValue(STORAGE_KEYS.disabledHosts, {});
     const siteEnabled = !disabledHosts[location.hostname];
+    const genericUrlRules = getGenericUrlRules();
+    const matchingGenericUrlRules = getMatchingGenericUrlRules(location.href);
 
     menuIds.push(
       GM_registerMenuCommand(globalEnabled ? "关闭全局防剧透" : "开启全局防剧透", () => {
@@ -708,6 +782,45 @@
         });
       })
     );
+
+    menuIds.push(
+      GM_registerMenuCommand("通用规则：添加当前网页", () => {
+        addGenericUrlRule(getCurrentPageGenericRule());
+      })
+    );
+
+    menuIds.push(
+      GM_registerMenuCommand("通用规则：添加当前网站", () => {
+        addGenericUrlRule(getCurrentSiteGenericRule());
+      })
+    );
+
+    if (matchingGenericUrlRules.length) {
+      menuIds.push(
+        GM_registerMenuCommand(`通用规则：移除当前匹配项 (${matchingGenericUrlRules.length})`, () => {
+          if (window.confirm(`移除当前页面命中的通用规则？\n\n${matchingGenericUrlRules.join("\n")}`)) {
+            removeGenericUrlRules(matchingGenericUrlRules);
+          }
+        })
+      );
+    }
+
+    menuIds.push(
+      GM_registerMenuCommand(`通用规则：查看适配网址 (${genericUrlRules.length})`, () => {
+        const message = genericUrlRules.length ? genericUrlRules.join("\n") : "暂无自定义通用规则适配网址";
+        window.alert(message);
+      })
+    );
+
+    menuIds.push(
+      GM_registerMenuCommand("通用规则：编辑适配网址", () => {
+        const currentValue = getGenericUrlRules().join("\n");
+        const nextValue = window.prompt("一行一个通用规则适配网址，支持 * 通配符。", currentValue);
+        if (nextValue === null) return;
+        setGenericUrlRules(nextValue.split(/\r?\n/));
+        refreshAfterSettingsChange();
+      })
+    );
   }
 
   function unregisterMenus() {
@@ -727,7 +840,7 @@
 
   function refreshAfterSettingsChange() {
     registerMenus();
-    if (isEnabled()) {
+    if (isEnabled() && (isBuiltInSitePage() || shouldRunGenericFallback())) {
       ensureObserver();
       scheduleScan();
     } else {
