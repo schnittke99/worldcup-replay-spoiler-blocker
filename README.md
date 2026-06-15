@@ -7,10 +7,15 @@ A userscript that hides score spoilers while watching football replays.
 - CCTV World Cup pages
 - Migu Video World Cup schedule pages
 - Migu Video replay detail pages
+- Hupu international football board: `https://bbs.hupu.com/all-soccer`
 - Score text in replay comments and related titles
 - Standings and scorer table numbers where they may reveal results
 
 Hidden scores can be revealed temporarily by clicking the masked text or block.
+
+## Supported Pages Only
+
+The userscript is intentionally scoped to CCTV, Migu Video, and Hupu football pages so it does not affect normal browsing on unrelated sites.
 
 ## Install
 

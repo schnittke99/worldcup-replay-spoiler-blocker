@@ -1,10 +1,15 @@
 // ==UserScript==
 // @name         World Cup Replay Spoiler Blocker
 // @namespace    https://local/worldcup-replay-spoiler-blocker
-// @version      0.1.0
-// @description  Hide World Cup score spoilers on CCTV pages first, with a conservative site-wide fallback for text scores.
+// @version      0.1.1
+// @description  Hide football replay score spoilers on CCTV, Migu Video, and Hupu football pages.
 // @author       Codex
-// @match        *://*/*
+// @match        *://worldcup.cctv.com/2026/*
+// @match        *://cbs.sports.cctv.com/*
+// @match        *://www.miguvideo.com/p/home/198188f9235149749cb1b132c88e2c7a*
+// @match        *://www.miguvideo.com/p/live/*
+// @match        *://www.miguvideo.com/p/detail/*
+// @match        *://bbs.hupu.com/all-soccer*
 // @run-at       document-start
 // @grant        GM_addStyle
 // @grant        GM_getValue
@@ -20,6 +25,7 @@
     mode: "blur-click",
     cctvFullReplayMode: true,
     miguReplayMode: true,
+    hupuFootballMode: true,
     genericFallback: true,
     resultKeywordMask: true,
     standingsMask: true,
@@ -54,6 +60,10 @@
   const MIGU_SCORE_RE = /\b\d{1,2}\s*(?::|\uFF1A|\u6BD4|-)\s*\d{1,2}\b/g;
   const MIGU_PAREN_SCORE_RE = /[\uFF08(]\s*(?:\u70B9\u7403\s*)?\d{1,2}\s*(?::|\uFF1A|\u6BD4|-)\s*\d{1,2}\s*[\uFF09)]/g;
   const MIGU_STANDINGS_NUMBER_RE = /^-?\d+(?:\(\d+\))?$|^\d+\s*\/\s*\d+$/;
+  const HUPU_FOOTBALL_CONTEXT_RE =
+    /(?:\u4e16\u754c\u676f|\u8db3\u7403|\u56fd\u9645\u8db3\u7403|\u4e2d\u56fd\u8db3\u7403|\u82f1\u8d85|\u897f\u7532|\u610f\u7532|\u5fb7\u7532|\u6cd5\u7532|\u6b27\u51a0|\u6bd4\u8d5b|\u534a\u573a|\u5168\u573a|\u7834\u95e8|\u8fdb\u7403|\u5df4\u897f|\u963f\u6839\u5ef7|\u7f8e\u56fd|\u5df4\u62c9\u572d|\u52a0\u62ff\u5927|\u6ce2\u9ed1)/;
+  const HUPU_RESULT_KEYWORD_RE =
+    /(?:\u534a\u573a|\u5168\u573a|\u7834\u95e8|\u8fdb\u7403|\u6885\u5f00\u4e8c\u5ea6|\u5e3d\u5b50\u620f\u6cd5|\u7edd\u6740|\u7edd\u5e73|\u626d\u5e73|\u7ec8\u7ed3|\u8fde\u8d25|\u9996\u5206|\u9996\u80dc|\u5927\u80dc|\u5c0f\u80dc|\u9669\u80dc|\u6218\u80dc|\u51fb\u8d25|\u4e0d\u654c|\u9006\u8f6c|\u664b\u7ea7|\u51fa\u7ebf|\u6dd8\u6c70|\u6551\u9669|\u5c61\u9020\u9669|\u518d\u4e0b\u4e00\u57ce)/;
   const NON_CONTENT_TAGS = new Set([
     "SCRIPT",
     "STYLE",
@@ -129,12 +139,14 @@
 
   function scanDocument() {
     if (!isEnabled() || !document.body) return;
+    if (!isSupportedPage()) return;
 
     scannedTextNodesThisPass = 0;
     applyCctvRules();
     applyMiguRules();
+    applyHupuRules();
 
-    if (CONFIG.genericFallback) {
+    if (CONFIG.genericFallback && !isHupuFootballPage()) {
       maskGenericSpoilers(document.body);
     }
   }
@@ -187,6 +199,51 @@
 
   function isMiguVideo() {
     return location.hostname === "www.miguvideo.com" || location.hostname.endsWith(".miguvideo.com");
+  }
+
+  function applyHupuRules() {
+    if (!CONFIG.hupuFootballMode || !isHupuFootballPage()) return;
+
+    document.querySelectorAll("a").forEach((link) => {
+      if (shouldSkipElement(link)) return;
+      const text = normalizedText(link.textContent);
+      if (!text || text.length > 180) return;
+      if (isHupuSpoilerTitle(text)) {
+        maskElementBlock(link);
+      }
+    });
+  }
+
+  function isSupportedPage() {
+    const host = location.hostname;
+    const path = location.pathname;
+
+    if (host === "worldcup.cctv.com" && path.startsWith("/2026/")) return true;
+    if (host === "cbs.sports.cctv.com") return true;
+    if (isMiguVideo() && /^\/p\/(?:home\/198188f9235149749cb1b132c88e2c7a|live\/|detail\/)/.test(path)) return true;
+    if (isHupuFootballPage()) return true;
+
+    return false;
+  }
+
+  function isHupuFootballPage() {
+    return location.hostname === "bbs.hupu.com" && location.pathname === "/all-soccer";
+  }
+
+  function isHupuSpoilerTitle(text) {
+    if (MIGU_SCORE_RE.test(text) && HUPU_FOOTBALL_CONTEXT_RE.test(text)) {
+      MIGU_SCORE_RE.lastIndex = 0;
+      return true;
+    }
+    MIGU_SCORE_RE.lastIndex = 0;
+
+    if (MIGU_RESULT_KEYWORD_RE.test(text) && HUPU_FOOTBALL_CONTEXT_RE.test(text)) {
+      MIGU_RESULT_KEYWORD_RE.lastIndex = 0;
+      return true;
+    }
+    MIGU_RESULT_KEYWORD_RE.lastIndex = 0;
+
+    return HUPU_RESULT_KEYWORD_RE.test(text) && HUPU_FOOTBALL_CONTEXT_RE.test(text);
   }
 
   function maskCctvWorldCupTitles() {
