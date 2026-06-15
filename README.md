@@ -15,7 +15,9 @@ Hidden scores can be revealed temporarily by clicking the masked text or block.
 
 ## Supported Pages Only
 
-The userscript is intentionally scoped to CCTV, Migu Video, and Hupu football pages so it does not affect normal browsing on unrelated sites.
+The userscript is intentionally scoped to CCTV, Migu Video, and Hupu football pages so it does not affect normal browsing on unrelated sites. Hupu uses the generic inline spoiler rules instead of whole-title masking.
+
+You can manage the enabled URL patterns from the Tampermonkey or Violentmonkey dashboard by editing the script's match/include settings.
 
 ## Install
 
